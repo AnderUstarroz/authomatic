@@ -33,8 +33,10 @@ import random
 import sys
 import traceback
 import six
+from aiopyramid.helpers import synchronize
+import asyncio
 from six.moves.urllib import parse
-from six.moves import http_client
+import aiohttp
 import uuid
 
 
@@ -80,7 +82,7 @@ def login_decorator(func):
     def wrap(provider, *args, **kwargs):
         error = None
         result = authomatic.core.LoginResult(provider)
-        
+
         try:
             func(provider, *args, **kwargs)
         except Exception as e:
@@ -92,19 +94,19 @@ def login_decorator(func):
                     # TODO: Check whether it actually works without middleware
                     provider.write(_error_traceback_html(sys.exc_info(), traceback.format_exc()))
                 raise
-        
+
         # If there is user or error the login procedure has finished
         if provider.user or error:
             result = authomatic.core.LoginResult(provider)
             # Add error to result
             result.error = error
-            
+
             # delete session cookie
             if isinstance(provider.session, authomatic.core.Session):
                 provider.session.delete()
-            
+
             provider._log(logging.INFO, 'Procedure finished.')
-            
+
             if provider.callback:
                 provider.callback(result)
             return result
@@ -331,7 +333,8 @@ class BaseProvider(object):
         logger = cls._logger or authomatic.core._logger
         logger.log(level, ': '.join(('authomatic', cls.__name__, msg)))
 
-    
+    @synchronize
+    @asyncio.coroutine
     def _fetch(self, url, method='GET', params=None, headers=None, body='', max_redirects=5, content_parser=None):
         """
         Fetches a URL.
@@ -364,39 +367,40 @@ class BaseProvider(object):
         headers.update(self.access_headers)
         
         scheme, host, path, query, fragment = parse.urlsplit(url)
+        body = parse.parse_qsl(body)
         query = parse.urlencode(params)
-        
+
         if method in ('POST', 'PUT', 'PATCH'):
             if not body:
-                # Put querystring to body
-                body = query
+                body = params
                 query = ''
                 headers.update({'Content-Type': 'application/x-www-form-urlencoded'})
+        elif method in ('GET'):
+           body = []
         print(path, query)
         request_path = parse.urlunsplit(('', '', path or '', query or '', ''))
         
         self._log(logging.DEBUG, ' \u251C\u2500 host: {0}'.format(host))
         self._log(logging.DEBUG, ' \u251C\u2500 path: {0}'.format(request_path))
         self._log(logging.DEBUG, ' \u251C\u2500 method: {0}'.format(method))
-        self._log(logging.DEBUG, ' \u251C\u2500 body: {0}'.format(body))
+        self._log(logging.DEBUG, ' \u251C\u2500 body: {0}'.format(str(body)))
         self._log(logging.DEBUG, ' \u251C\u2500 params: {0}'.format(params))
         self._log(logging.DEBUG, ' \u2514\u2500 headers: {0}'.format(headers))
         
         # Connect
-        if scheme.lower() == 'https':
-            connection = http_client.HTTPSConnection(host)
-        else:
-            connection = http_client.HTTPConnection(host)
-            
         try:
-            connection.request(method, request_path, body, headers)
+            url = parse.urlunsplit((scheme.lower(), host, request_path, '', ''))
+            response = yield from aiohttp.request(method,
+                                                  url,
+                                                  data=body,
+                                                  headers=headers)
+            response.page_content = yield from response.read()
         except Exception as e:
             raise FetchError('Could not connect!',
-                             original_message=e.message,
-                             url=request_path)
+                             original_message=e.args[0],
+                             url=url)
         
-        response = connection.getresponse()
-        location = response.getheader('Location')
+        location = response.headers.get('Location')
         
         if response.status in (300, 301, 302, 303, 307) and location:
             if location == url:
@@ -425,7 +429,7 @@ class BaseProvider(object):
             self._log(logging.DEBUG, 'Got response:')
             self._log(logging.DEBUG, ' \u251C\u2500 url: {0}'.format(url))
             self._log(logging.DEBUG, ' \u251C\u2500 status: {0}'.format(response.status))
-            self._log(logging.DEBUG, ' \u2514\u2500 headers: {0}'.format(response.getheaders()))
+            self._log(logging.DEBUG, ' \u2514\u2500 headers: {0}'.format(list(response.headers.items())))
                 
         return authomatic.core.Response(response, content_parser)
     
@@ -889,7 +893,7 @@ class AuthorizationProvider(BaseProvider):
         self.user = self._update_or_create_user(response.data, content=response.content)
         
         # Return UserInfoResponse.
-        return authomatic.core.UserInfoResponse(self.user, response.httplib_response)
+        return authomatic.core.UserInfoResponse(self.user, response.aiohttp_response)
     
 
 class AuthenticationProvider(BaseProvider):

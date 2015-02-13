@@ -270,11 +270,11 @@ class OAuth2(providers.AuthorizationProvider):
             credentials = self._x_credentials_parser(credentials, response.data)
         
         return response
-    
-    
+
+
     @providers.login_decorator
     def login(self):
-        
+
         # get request parameters from which we can determine the login phase
         authorization_code = self.params.get('code')
         error = self.params.get('error')
@@ -326,7 +326,7 @@ class OAuth2(providers.AuthorizationProvider):
                                                              headers=self.access_token_headers)
 
             response = self._fetch(*request_elements)
-            
+
             access_token = response.data.get('access_token', '')
             refresh_token = response.data.get('refresh_token', '')
             
@@ -378,9 +378,9 @@ class OAuth2(providers.AuthorizationProvider):
             #===================================================================
             # Phase 1 before redirect
             #===================================================================
-            
+
             self._log(logging.INFO, 'Starting OAuth 2.0 authorization procedure.')
-            
+
             csrf = ''
             if self.supports_csrf_protection:
                 # generate csfr
@@ -389,7 +389,7 @@ class OAuth2(providers.AuthorizationProvider):
                 self._session_set('state', csrf)
             else:
                 self._log(logging.WARN, 'Provider doesn\'t support CSRF validation!')
-                        
+
             request_elements = self.create_request_elements(request_type=self.USER_AUTHORIZATION_REQUEST_TYPE,
                                                             credentials=self.credentials,
                                                             url=self.user_authorization_url,
@@ -397,9 +397,9 @@ class OAuth2(providers.AuthorizationProvider):
                                                             scope=self._x_scope_parser(self.scope),
                                                             csrf=csrf,
                                                             params=self.user_authorization_params)
-            
+
             self._log(logging.INFO, 'Redirecting user to {0}.'.format(request_elements.full_url))
-            
+
             self.redirect(request_elements.full_url)
 
 

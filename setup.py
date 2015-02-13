@@ -5,6 +5,7 @@ setup(
     version='0.0.10', # TODO: Put version in one place.
     packages=find_packages(),
     package_data={'': ['*.txt', '*.rst']},
+    install_requires = ['aiohttp>=0.14.1'],
     author='Peter Hudec',
     author_email='peterhudec@peterhudec.com',
     description='Authorization / authentication client library for Python web applications',

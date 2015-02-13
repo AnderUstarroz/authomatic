@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from xml.etree import ElementTree
-import collections
+import collections, os
 import copy
 import datetime
 from . import exceptions
@@ -1051,40 +1051,37 @@ class Response(ReprMixin):
     :attr:`.content` and :attr:`.data` attributes.
     """
 
-    def __init__(self, httplib_response, content_parser=None):
+    def __init__(self, aiohttp_response, content_parser=None):
         """
-        :param httplib_response:
-            The wrapped :class:`httplib.HTTPResponse` instance.
+        :param aiohttp_response:
+            The wrapped :class:`aiohttp.response` instance.
 
         :param function content_parser:
             Callable which accepts :attr:`.content` as argument,
             parses it and returns the parsed data as :class:`dict`.
         """
 
-        self.httplib_response = httplib_response
+        self.aiohttp_response = aiohttp_response
         self.content_parser = content_parser or json_qs_parser
         self._data = None
         self._content = None
 
-        #: Same as :attr:`httplib.HTTPResponse.msg`.
-        self.msg = httplib_response.msg
-        #: Same as :attr:`httplib.HTTPResponse.version`.
-        self.version = httplib_response.version
-        #: Same as :attr:`httplib.HTTPResponse.status`.
-        self.status = httplib_response.status
-        #: Same as :attr:`httplib.HTTPResponse.reason`.
-        self.reason = httplib_response.reason
+        self.msg = self.get_msg()
+        self.version = aiohttp_response.version
+        self.status = aiohttp_response.status
+        self.reason = aiohttp_response.reason
 
-
-    def read(self, amt=None):
+    def get_msg(self):
         """
-        Same as :meth:`httplib.HTTPResponse.read`.
-
-        :param amt:
+        Get Aiohttp headers as string
         """
-
-        return self.httplib_response.read(amt)
-
+        msg = ''
+        for key in self.aiohttp_response.headers:
+            msg += '{header}: {value}{new_line}'.format(
+                header=key,
+                value=self.aiohttp_response.headers[key],
+                new_line=os.linesep)
+        return msg
 
     def getheader(self, name, default=None):
         """
@@ -1094,21 +1091,13 @@ class Response(ReprMixin):
         :param default:
         """
 
-        return self.httplib_response.getheader(name, default)
-
-
-    def fileno(self):
-        """
-        Same as :meth:`httplib.HTTPResponse.fileno`.
-        """
-        return self.httplib_response.fileno()
-
+        return self.aiohttp_response.headers.get(name)
 
     def getheaders(self):
         """
         Same as :meth:`httplib.HTTPResponse.getheaders`.
         """
-        return self.httplib_response.getheaders()
+        return self.aiohttp_response.headers.items()
 
 
     @property
@@ -1118,7 +1107,7 @@ class Response(ReprMixin):
         """
 
         if not self._content:
-            self._content = self.httplib_response.read().decode()
+            self._content = self.aiohttp_response.page_content.decode()
         return self._content
 
 
